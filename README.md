@@ -14,15 +14,15 @@
 
 图片的加载我们使用img标签的src属性，只要image标签有src属性，浏览器就会加载对应的图片资源。那么我们只要初始的时候不给image标签src属性，当图片出现在可视区域内再给src赋值，那么就能做到图片懒加载了。
 
-剩下的重点就是如何判断图片已经出现在可视区域内了。
+剩下的重点就是如何判断图片是否已经出现在可视区域内了。
 
 ## 方法一
 通过图片元素距离屏幕上边沿的高度和浏览器可视区域高度相比。
-浏览器窗口的视口（viewport）高度 `window.innerHeight`
-`Element.getBoundingClientRect()` 方法返回一个 DOMRect 对象，其提供了元素的大小及其相对于视口的位置。<br>
+浏览器窗口的视口（viewport）高度可以使用 `window.innerHeight`<br>
+而`Element.getBoundingClientRect()` 方法返回一个 DOMRect 对象，其提供了元素的大小及其相对于视口的位置。<br>
 DOMRect对象中包含top、bottom、left、right、width、height、x、y,8个属性。每个属性的含义如下图所示
 ![getBoundingClientRect](/assets/img/getBoundingClientRect.png "getBoundingClientRect")
-那断图片已经进入视口的判断就是
+那么图片已经进入视口的判断就是
 ```js
 // 获取所有图片
 const images = Array.from(document.getElementsByTagName('img'));
@@ -58,13 +58,13 @@ loadImg()
 ```
 
 这时候还有几个问题没有解决
-1. 只判断了图片顶部超过了浏览器底部，没有判断图片是不是已经在浏览器di顶部之上了，如果用户使用某些锚点直接定位在了比较靠下的位置，我们还加载超出浏览器的图片就浪费性能了
+1. 只判断了图片顶部超过了浏览器底部，没有判断图片是不是已经在浏览器顶部之上了，如果用户使用某些锚点直接定位在了比较靠下的位置，或者浏览器记录了之前用户滚动的位置，我们还加载超出浏览器的图片就浪费性能了
 2. onScroll函数触发太过频繁，应当使用节流函数节约性能
 3. 如果用户滑动非常的快，表示这部分图片用户可能不关注，那么我们也可以不去加载它
 4. 如果滚动的不是window怎么办？
 5. 上边代码images、各种函数都分散在外，可以封装起来便于使用
    
-首先解决第一个问题，不只判断顶部，也判断以下底部
+首先解决第一个问题，不只判断顶部，也判断一下底部
 ```js
 function loadImg(){
     images.forEach(img=>{
@@ -102,7 +102,7 @@ function throttle(func, wait) {
   // 运用节流函数
   window.addEventListener('scroll', throttle(loadImg, 100))
 ```
-当节流函数写完之后，快速滑动页面，只要在300毫秒内图片已经不在视口之内了，图片就不会再加载了。但是，如果快速滑动的时间稍长，那么在节流函数执行时，正好处于视口内的图片也会加载，实际上，这些图片也可能是被快速略过的图片，也就是需要解决的问题3。<br>
+当节流函数写完之后，快速滑动页面，只要在300毫秒内图片已经不在视口之内，图片就不会再加载了。但是，如果快速滑动的时间稍长，那么在节流函数执行时，正好处于视口内的图片也会加载，实际上，这些图片也可能是被快速略过的图片，也就是需要解决的问题3。<br>
 我使用一个函数延迟一些时间之后，再次判断这个图片是不是还在视口之内，如果还在视口之内就加载它。
 ```js
 // 延迟200毫秒之后再次判断图片是否在可视区域内
@@ -261,8 +261,120 @@ MDN上的解释：
 ## 方法三
 chrome 浏览器支持了图片懒加载，只需要在懒加载的图片标签上使用loading属性，指定值为lazy就开启了图片懒加载，可以说是非常方便了，但是要注意兼容性
 ![IntersectionObserver](/assets/img/lazyLoading.jpg )
+```html
+<img src="https:/xxx.jpg" loading="lazy" />
+```
+
+完整的代码如下：
+```js
+class LazyLoad{
+    constructor(
+        imageSelector,
+        {container=window, throttleSec=200, delay=200} = {}
+        ){
+        this.images = document.querySelectorAll(imageSelector);
+        this.container = container===window?window:document.querySelector(container)
+        this.throttleSec = throttleSec
+        this.delay = delay
+        this.initImg()
+    }
+    initImg(){
+        this.images.forEach(item=>{
+            item.src = '../assets/img/loading.gif'
+        })
+        if('IntersectionObserver' in window){
+            this.observeImg()
+        }else if('loading' in HTMLImageElement.prototype){
+            this.setLoadingLazy()
+        }else{
+            this.onViewPortScroll();
+        }
+    }
+    setLoadingLazy(){
+        setTimeout(()=>{
+            this.images.forEach(img=>{
+                img.loading = 'lazy'
+                img.src =  img.dataset.src
+            })
+        },0)
+    }
+    observeImg(root){
+        const option = this.container === window ? {}:{root:this.container}
+        const observer = new IntersectionObserver((entries, observer)=>{
+            // 当元素可见比例超过配置的阈值后，会触发这个回调
+            // 其中第一个参数描述了触发的元素与配置的视口的交叉状态
+            // 其中entries.isIntersecting boolean类型描述了目标是否与视口相交
+            // 第二个参数是被调用的IntersectionObserver实例
+            entries.forEach(entry=>{
+                if(entry.isIntersecting){
+                    this.delayJudge(entry.target)
+                }
+            })
+        },
+        // 这是配置参数，可以配置root、rootMargin和threshold三个属性
+        // root 指定被看做视口的区域
+        // threshold指定监听目标与视口交叉比例为多少的时候会触发回调, 默认为0
+        option
+        );
+        // 可以使用IntersectionObserver.observe()来监听元素
+        this.images.forEach(img=>{
+            observer.observe(img)
+        })
+    }
+    onViewPortScroll(){
+        this.container.addEventListener(
+            'scroll', 
+            this.throttle(this.loadImg, this.throttleSec).bind(this)
+        )
+        this.loadImg();
+    }
+    delayJudge(img){
+        setTimeout(()=>{
+            const { top, bottom } = img.getBoundingClientRect()
+            if(top<window.innerHeight&&bottom>0){
+                // 图片需要显示了
+                img.src = img.dataset.src
+            } 
+        },this.delay)
+    }
+    
+    loadImg(){
+        this.images.forEach(img=>{
+            const { top, bottom } = img.getBoundingClientRect()
+            if(top<window.innerHeight&&bottom>0){
+                this.delayJudge(img)
+            }
+        })
+    }
+    throttle(func, wait) {
+        let previous = 0;
+        let context = this;
+        let timer = null;
+        return function () {
+          let now = Date.now();
+          let args = arguments;
+          clearTimeout(timer);
+          // 大于等待时间就执行
+          if (now - previous > wait) {
+            func.apply(context, args);
+            previous = now;
+          } else{
+              // 还有一种可能，在最后一次执行func后的wait毫秒内，又有滚动
+              // 但滚动时间又达不到wait毫秒的限制， 这次滚动显露出的图片就不会加载
+              // 使用定时器，如果再次触发滚动就清除定时器，否则，一段时间后自动执行加载函数func
+              timer = setTimeout(()=>{
+                func.apply(context, args)
+              },wait/2)
+          }
+        };
+    }
+}
+```
 ## 参考文档
 
 [MDN getBoundingClientRect](https://developer.mozilla.org/zh-CN/docs/Web/API/Element/getBoundingClientRect)
 
 [MDN Intersection Observer](https://developer.mozilla.org/zh-CN/docs/Web/API/IntersectionObserver)
+
+## 完整代码
+[github 图片懒加载](https://github.com/guigufrontend/image-lazy-load)
