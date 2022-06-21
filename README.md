@@ -215,6 +215,54 @@ class LazyLoad{
 new LazyLoad('img')
 ```
 为了给用户比较好的体验，在图片未加载的时候可以给图片一个loading状态。
+```js
+initImg(){
+        this.images.forEach(item=>{
+            item.src = './assets/img/loading.gif'
+        })
+        this.onViewPortScroll();
+    }
+```
+这样，我的图片懒加载就基本完成了
+## 方法二 使用IntersectionObserver接口
+MDN上的解释：
+>IntersectionObserver接口 (从属于Intersection Observer API) 提供了一种异步观察目标元素与其祖先元素或顶级文档视窗 (viewport) 交叉状态的方法。祖先元素与视窗 (viewport) 被称为根 (root)。
+
+>当一个IntersectionObserver对象被创建时，其被配置为监听根中一段给定比例的可见区域。一旦 IntersectionObserver 被创建，则无法更改其配置，所以一个给定的观察者对象只能用来监听可见区域的特定变化值；然而，你可以在同一个观察者对象中配置监听多个目标元素。
+
+```js
+    // 先获取observer对象
+    const observer = new IntersectionObserver((entries, observer)=>{
+        // 当元素可见比例超过配置的阈值后，会触发这个回调
+        // 其中第一个参数描述了触发的元素与配置的视口的交叉状态
+        // 其中entries.isIntersecting boolean类型描述了目标是否与视口相交
+        // 第二个参数是被调用的IntersectionObserver实例
+        entries.forEach(entry=>{
+            if(entry.isIntersecting){
+                entry.target.src = entry.target.dataset.src
+            }
+        })
+    },
+    // 这是配置参数，可以配置root、rootMargin和threshold三个属性
+    // root 指定被看做视口的区域
+    // threshold指定监听目标与视口交叉比例为多少的时候会触发回调, 默认为0
+    {root}
+    );
+
+    // 再使用IntersectionObserver.observe()来监听元素
+    images.forEach(img=>{
+        observer.observe(img)
+    })
+```
+
+来使用Can I Use来看一下这个API的兼容情况
+![IntersectionObserver](/assets/img/canIuse.jpg )
+可以看到IE和Opera兼容性不好，如果要使用它，最好先判断这个API是否能用，不能用的话可以降级到第一种方法。
+## 方法三
+chrome 浏览器支持了图片懒加载，只需要在懒加载的图片标签上使用loading属性，指定值为lazy就开启了图片懒加载，可以说是非常方便了，但是要注意兼容性
+![IntersectionObserver](/assets/img/lazyLoading.jpg )
 ## 参考文档
 
 [MDN getBoundingClientRect](https://developer.mozilla.org/zh-CN/docs/Web/API/Element/getBoundingClientRect)
+
+[MDN Intersection Observer](https://developer.mozilla.org/zh-CN/docs/Web/API/IntersectionObserver)
